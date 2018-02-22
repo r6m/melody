@@ -44,7 +44,7 @@ func NewDialer(url string) (*websocket.Conn, error) {
 }
 
 func TestEcho(t *testing.T) {
-	echo := NewTestServerHandler(func(session *Session, msg []byte) {
+	echo := NewTestServerHandler(func(session Session, msg []byte) {
 		session.Write(msg)
 	})
 	server := httptest.NewServer(echo)
@@ -82,7 +82,7 @@ func TestEcho(t *testing.T) {
 }
 
 func TestWriteClosed(t *testing.T) {
-	echo := NewTestServerHandler(func(session *Session, msg []byte) {
+	echo := NewTestServerHandler(func(session Session, msg []byte) {
 		session.Write(msg)
 	})
 	server := httptest.NewServer(echo)
@@ -98,11 +98,11 @@ func TestWriteClosed(t *testing.T) {
 
 		conn.WriteMessage(websocket.TextMessage, []byte(msg))
 
-		echo.m.HandleConnect(func(s *Session) {
+		echo.m.HandleConnect(func(s Session) {
 			s.Close()
 		})
 
-		echo.m.HandleDisconnect(func(s *Session) {
+		echo.m.HandleDisconnect(func(s Session) {
 			err := s.Write([]byte("hello world"))
 
 			if err == nil {
@@ -132,7 +132,7 @@ func TestLen(t *testing.T) {
 		}
 	}()
 
-	echo := NewTestServerHandler(func(session *Session, msg []byte) {})
+	echo := NewTestServerHandler(func(session Session, msg []byte) {})
 	server := httptest.NewServer(echo)
 	defer server.Close()
 
@@ -165,7 +165,7 @@ func TestLen(t *testing.T) {
 
 func TestEchoBinary(t *testing.T) {
 	echo := NewTestServer()
-	echo.m.HandleMessageBinary(func(session *Session, msg []byte) {
+	echo.m.HandleMessageBinary(func(session Session, msg []byte) {
 		session.WriteBinary(msg)
 	})
 	server := httptest.NewServer(echo)
@@ -204,20 +204,20 @@ func TestEchoBinary(t *testing.T) {
 
 func TestHandlers(t *testing.T) {
 	echo := NewTestServer()
-	echo.m.HandleMessage(func(session *Session, msg []byte) {
+	echo.m.HandleMessage(func(session Session, msg []byte) {
 		session.Write(msg)
 	})
 	server := httptest.NewServer(echo)
 	defer server.Close()
 
-	var q *Session
+	var q Session
 
-	echo.m.HandleConnect(func(session *Session) {
+	echo.m.HandleConnect(func(session Session) {
 		q = session
 		session.Close()
 	})
 
-	echo.m.HandleDisconnect(func(session *Session) {
+	echo.m.HandleDisconnect(func(session Session) {
 		if q != session {
 			t.Error("disconnecting session should be the same as connecting")
 		}
@@ -228,10 +228,10 @@ func TestHandlers(t *testing.T) {
 
 func TestMetadata(t *testing.T) {
 	echo := NewTestServer()
-	echo.m.HandleConnect(func(session *Session) {
+	echo.m.HandleConnect(func(session Session) {
 		session.Set("stamp", time.Now().UnixNano())
 	})
-	echo.m.HandleMessage(func(session *Session, msg []byte) {
+	echo.m.HandleMessage(func(session Session, msg []byte) {
 		stamp := session.MustGet("stamp").(int64)
 		session.Write([]byte(strconv.Itoa(int(stamp))))
 	})
@@ -280,7 +280,7 @@ func TestMetadata(t *testing.T) {
 
 func TestUpgrader(t *testing.T) {
 	broadcast := NewTestServer()
-	broadcast.m.HandleMessage(func(session *Session, msg []byte) {
+	broadcast.m.HandleMessage(func(session Session, msg []byte) {
 		session.Write(msg)
 	})
 	server := httptest.NewServer(broadcast)
@@ -292,7 +292,7 @@ func TestUpgrader(t *testing.T) {
 		CheckOrigin:     func(r *http.Request) bool { return false },
 	}
 
-	broadcast.m.HandleError(func(session *Session, err error) {
+	broadcast.m.HandleError(func(session Session, err error) {
 		if err == nil || err.Error() != "websocket: origin not allowed" {
 			t.Error("there should be a origin error")
 		}
@@ -307,7 +307,7 @@ func TestUpgrader(t *testing.T) {
 
 func TestBroadcast(t *testing.T) {
 	broadcast := NewTestServer()
-	broadcast.m.HandleMessage(func(session *Session, msg []byte) {
+	broadcast.m.HandleMessage(func(session Session, msg []byte) {
 		broadcast.m.Broadcast(msg)
 	})
 	server := httptest.NewServer(broadcast)
@@ -352,7 +352,7 @@ func TestBroadcast(t *testing.T) {
 
 func TestBroadcastBinary(t *testing.T) {
 	broadcast := NewTestServer()
-	broadcast.m.HandleMessageBinary(func(session *Session, msg []byte) {
+	broadcast.m.HandleMessageBinary(func(session Session, msg []byte) {
 		broadcast.m.BroadcastBinary(msg)
 	})
 	server := httptest.NewServer(broadcast)
@@ -402,7 +402,7 @@ func TestBroadcastBinary(t *testing.T) {
 
 func TestBroadcastOthers(t *testing.T) {
 	broadcast := NewTestServer()
-	broadcast.m.HandleMessage(func(session *Session, msg []byte) {
+	broadcast.m.HandleMessage(func(session Session, msg []byte) {
 		broadcast.m.BroadcastOthers(msg, session)
 	})
 	broadcast.m.Config.PongWait = time.Second
@@ -449,7 +449,7 @@ func TestBroadcastOthers(t *testing.T) {
 
 func TestBroadcastBinaryOthers(t *testing.T) {
 	broadcast := NewTestServer()
-	broadcast.m.HandleMessageBinary(func(session *Session, msg []byte) {
+	broadcast.m.HandleMessageBinary(func(session Session, msg []byte) {
 		broadcast.m.BroadcastBinaryOthers(msg, session)
 	})
 	broadcast.m.Config.PongWait = time.Second
@@ -527,8 +527,8 @@ func TestPingPong(t *testing.T) {
 
 func TestBroadcastFilter(t *testing.T) {
 	broadcast := NewTestServer()
-	broadcast.m.HandleMessage(func(session *Session, msg []byte) {
-		broadcast.m.BroadcastFilter(msg, func(q *Session) bool {
+	broadcast.m.HandleMessage(func(session Session, msg []byte) {
+		broadcast.m.BroadcastFilter(msg, func(q Session) bool {
 			return session == q
 		})
 	})
@@ -568,8 +568,8 @@ func TestBroadcastFilter(t *testing.T) {
 
 func TestBroadcastBinaryFilter(t *testing.T) {
 	broadcast := NewTestServer()
-	broadcast.m.HandleMessageBinary(func(session *Session, msg []byte) {
-		broadcast.m.BroadcastBinaryFilter(msg, func(q *Session) bool {
+	broadcast.m.HandleMessageBinary(func(session Session, msg []byte) {
+		broadcast.m.BroadcastBinaryFilter(msg, func(q Session) bool {
 			return session == q
 		})
 	})
@@ -628,11 +628,11 @@ func TestStop(t *testing.T) {
 }
 
 func TestSmallMessageBuffer(t *testing.T) {
-	echo := NewTestServerHandler(func(session *Session, msg []byte) {
+	echo := NewTestServerHandler(func(session Session, msg []byte) {
 		session.Write(msg)
 	})
 	echo.m.Config.MessageBufferSize = 0
-	echo.m.HandleError(func(s *Session, err error) {
+	echo.m.HandleError(func(s Session, err error) {
 		if err == nil {
 			t.Error("there should be a buffer full error here")
 		}
@@ -651,7 +651,7 @@ func TestSmallMessageBuffer(t *testing.T) {
 }
 
 func TestPong(t *testing.T) {
-	echo := NewTestServerHandler(func(session *Session, msg []byte) {
+	echo := NewTestServerHandler(func(session Session, msg []byte) {
 		session.Write(msg)
 	})
 	echo.m.Config.PongWait = time.Second
@@ -667,7 +667,7 @@ func TestPong(t *testing.T) {
 	}
 
 	fired := false
-	echo.m.HandlePong(func(s *Session) {
+	echo.m.HandlePong(func(s Session) {
 		fired = true
 	})
 
@@ -681,7 +681,7 @@ func TestPong(t *testing.T) {
 }
 
 func BenchmarkSessionWrite(b *testing.B) {
-	echo := NewTestServerHandler(func(session *Session, msg []byte) {
+	echo := NewTestServerHandler(func(session Session, msg []byte) {
 		session.Write(msg)
 	})
 	server := httptest.NewServer(echo)
@@ -696,7 +696,7 @@ func BenchmarkSessionWrite(b *testing.B) {
 }
 
 func BenchmarkBroadcast(b *testing.B) {
-	echo := NewTestServerHandler(func(session *Session, msg []byte) {
+	echo := NewTestServerHandler(func(session Session, msg []byte) {
 		session.Write(msg)
 	})
 	server := httptest.NewServer(echo)
