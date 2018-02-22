@@ -8,8 +8,26 @@ import (
 	"github.com/gorilla/websocket"
 )
 
-// Session wrapper around websocket connections.
-type Session struct {
+type Session interface {
+	writeMessage(*envelope)
+	writeRaw(*envelope) error
+	closed() bool
+	close()
+	ping()
+	writePump()
+	readPump()
+	Write([]byte) error
+	WriteBinary([]byte) error
+	Close() error
+	CloseWithMsg([]byte) error
+	Set(string, interface{})
+	Get(string) (interface{}, bool)
+	MustGet(string) interface{}
+	IsClosed() bool
+}
+
+// session wrapper around websocket connections.
+type session struct {
 	Request *http.Request
 	Keys    map[string]interface{}
 	conn    *websocket.Conn
@@ -19,7 +37,7 @@ type Session struct {
 	rwmutex *sync.RWMutex
 }
 
-func (s *Session) writeMessage(message *envelope) {
+func (s *session) writeMessage(message *envelope) {
 	if s.closed() {
 		s.melody.errorHandler(s, ErrWriteToClosedSession)
 		return
@@ -32,7 +50,7 @@ func (s *Session) writeMessage(message *envelope) {
 	}
 }
 
-func (s *Session) writeRaw(message *envelope) error {
+func (s *session) writeRaw(message *envelope) error {
 	if s.closed() {
 		return ErrWriteToClosedSession
 	}
@@ -47,14 +65,14 @@ func (s *Session) writeRaw(message *envelope) error {
 	return nil
 }
 
-func (s *Session) closed() bool {
+func (s *session) closed() bool {
 	s.rwmutex.RLock()
 	defer s.rwmutex.RUnlock()
 
 	return !s.open
 }
 
-func (s *Session) close() {
+func (s *session) close() {
 	if !s.closed() {
 		s.rwmutex.Lock()
 		s.open = false
@@ -64,11 +82,11 @@ func (s *Session) close() {
 	}
 }
 
-func (s *Session) ping() {
+func (s *session) ping() {
 	s.writeRaw(&envelope{t: websocket.PingMessage, msg: []byte{}})
 }
 
-func (s *Session) writePump() {
+func (s *session) writePump() {
 	ticker := time.NewTicker(s.melody.Config.PingPeriod)
 	defer ticker.Stop()
 
@@ -104,7 +122,7 @@ loop:
 	}
 }
 
-func (s *Session) readPump() {
+func (s *session) readPump() {
 	s.conn.SetReadLimit(s.melody.Config.MaxMessageSize)
 	s.conn.SetReadDeadline(time.Now().Add(s.melody.Config.PongWait))
 
@@ -139,7 +157,7 @@ func (s *Session) readPump() {
 }
 
 // Write writes message to session.
-func (s *Session) Write(msg []byte) error {
+func (s *session) Write(msg []byte) error {
 	if s.closed() {
 		return ErrSessionClosed
 	}
@@ -150,7 +168,7 @@ func (s *Session) Write(msg []byte) error {
 }
 
 // WriteBinary writes a binary message to session.
-func (s *Session) WriteBinary(msg []byte) error {
+func (s *session) WriteBinary(msg []byte) error {
 	if s.closed() {
 		return ErrSessionClosed
 	}
@@ -161,7 +179,7 @@ func (s *Session) WriteBinary(msg []byte) error {
 }
 
 // Close closes session.
-func (s *Session) Close() error {
+func (s *session) Close() error {
 	if s.closed() {
 		return ErrSessionAlreadyClosed
 	}
@@ -173,7 +191,7 @@ func (s *Session) Close() error {
 
 // CloseWithMsg closes the session with the provided payload.
 // Use the FormatCloseMessage function to format a proper close message payload.
-func (s *Session) CloseWithMsg(msg []byte) error {
+func (s *session) CloseWithMsg(msg []byte) error {
 	if s.closed() {
 		return ErrSessionAlreadyClosed
 	}
@@ -185,7 +203,7 @@ func (s *Session) CloseWithMsg(msg []byte) error {
 
 // Set is used to store a new key/value pair exclusivelly for this session.
 // It also lazy initializes s.Keys if it was not used previously.
-func (s *Session) Set(key string, value interface{}) {
+func (s *session) Set(key string, value interface{}) {
 	if s.Keys == nil {
 		s.Keys = make(map[string]interface{})
 	}
@@ -195,7 +213,7 @@ func (s *Session) Set(key string, value interface{}) {
 
 // Get returns the value for the given key, ie: (value, true).
 // If the value does not exists it returns (nil, false)
-func (s *Session) Get(key string) (value interface{}, exists bool) {
+func (s *session) Get(key string) (value interface{}, exists bool) {
 	if s.Keys != nil {
 		value, exists = s.Keys[key]
 	}
@@ -204,7 +222,7 @@ func (s *Session) Get(key string) (value interface{}, exists bool) {
 }
 
 // MustGet returns the value for the given key if it exists, otherwise it panics.
-func (s *Session) MustGet(key string) interface{} {
+func (s *session) MustGet(key string) interface{} {
 	if value, exists := s.Get(key); exists {
 		return value
 	}
@@ -213,6 +231,6 @@ func (s *Session) MustGet(key string) interface{} {
 }
 
 // IsClosed returns the status of the connection.
-func (s *Session) IsClosed() bool {
+func (s *session) IsClosed() bool {
 	return s.closed()
 }

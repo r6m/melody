@@ -46,11 +46,11 @@ var validReceivedCloseCodes = map[int]bool{
 	CloseTLSHandshake:            false,
 }
 
-type handleMessageFunc func(*Session, []byte)
-type handleErrorFunc func(*Session, error)
-type handleCloseFunc func(*Session, int, string) error
-type handleSessionFunc func(*Session)
-type filterFunc func(*Session) bool
+type handleMessageFunc func(Session, []byte)
+type handleErrorFunc func(Session, error)
+type handleCloseFunc func(Session, int, string) error
+type handleSessionFunc func(Session)
+type filterFunc func(Session) bool
 
 // Melody implements a websocket manager.
 type Melody struct {
@@ -83,56 +83,56 @@ func New() *Melody {
 	return &Melody{
 		Config:                   newConfig(),
 		Upgrader:                 upgrader,
-		messageHandler:           func(*Session, []byte) {},
-		messageHandlerBinary:     func(*Session, []byte) {},
-		messageSentHandler:       func(*Session, []byte) {},
-		messageSentHandlerBinary: func(*Session, []byte) {},
-		errorHandler:             func(*Session, error) {},
+		messageHandler:           func(Session, []byte) {},
+		messageHandlerBinary:     func(Session, []byte) {},
+		messageSentHandler:       func(Session, []byte) {},
+		messageSentHandlerBinary: func(Session, []byte) {},
+		errorHandler:             func(Session, error) {},
 		closeHandler:             nil,
-		connectHandler:           func(*Session) {},
-		disconnectHandler:        func(*Session) {},
-		pongHandler:              func(*Session) {},
+		connectHandler:           func(Session) {},
+		disconnectHandler:        func(Session) {},
+		pongHandler:              func(Session) {},
 		hub:                      hub,
 	}
 }
 
 // HandleConnect fires fn when a session connects.
-func (m *Melody) HandleConnect(fn func(*Session)) {
+func (m *Melody) HandleConnect(fn func(Session)) {
 	m.connectHandler = fn
 }
 
 // HandleDisconnect fires fn when a session disconnects.
-func (m *Melody) HandleDisconnect(fn func(*Session)) {
+func (m *Melody) HandleDisconnect(fn func(Session)) {
 	m.disconnectHandler = fn
 }
 
 // HandlePong fires fn when a pong is received from a session.
-func (m *Melody) HandlePong(fn func(*Session)) {
+func (m *Melody) HandlePong(fn func(Session)) {
 	m.pongHandler = fn
 }
 
 // HandleMessage fires fn when a text message comes in.
-func (m *Melody) HandleMessage(fn func(*Session, []byte)) {
+func (m *Melody) HandleMessage(fn func(Session, []byte)) {
 	m.messageHandler = fn
 }
 
 // HandleMessageBinary fires fn when a binary message comes in.
-func (m *Melody) HandleMessageBinary(fn func(*Session, []byte)) {
+func (m *Melody) HandleMessageBinary(fn func(Session, []byte)) {
 	m.messageHandlerBinary = fn
 }
 
 // HandleSentMessage fires fn when a text message is successfully sent.
-func (m *Melody) HandleSentMessage(fn func(*Session, []byte)) {
+func (m *Melody) HandleSentMessage(fn func(Session, []byte)) {
 	m.messageSentHandler = fn
 }
 
 // HandleSentMessageBinary fires fn when a binary message is successfully sent.
-func (m *Melody) HandleSentMessageBinary(fn func(*Session, []byte)) {
+func (m *Melody) HandleSentMessageBinary(fn func(Session, []byte)) {
 	m.messageSentHandlerBinary = fn
 }
 
 // HandleError fires fn when a session has an error.
-func (m *Melody) HandleError(fn func(*Session, error)) {
+func (m *Melody) HandleError(fn func(Session, error)) {
 	m.errorHandler = fn
 }
 
@@ -149,7 +149,7 @@ func (m *Melody) HandleError(fn func(*Session, error)) {
 // normal error handling. Applications should only set a close handler when the
 // application must perform some action before sending a close frame back to
 // the session.
-func (m *Melody) HandleClose(fn func(*Session, int, string) error) {
+func (m *Melody) HandleClose(fn func(Session, int, string) error) {
 	if fn != nil {
 		m.closeHandler = fn
 	}
@@ -172,7 +172,7 @@ func (m *Melody) HandleRequestWithKeys(w http.ResponseWriter, r *http.Request, k
 		return err
 	}
 
-	session := &Session{
+	session := &session{
 		Request: r,
 		Keys:    keys,
 		conn:    conn,
@@ -214,7 +214,7 @@ func (m *Melody) Broadcast(msg []byte) error {
 }
 
 // BroadcastFilter broadcasts a text message to all sessions that fn returns true for.
-func (m *Melody) BroadcastFilter(msg []byte, fn func(*Session) bool) error {
+func (m *Melody) BroadcastFilter(msg []byte, fn func(Session) bool) error {
 	if m.hub.closed() {
 		return ErrMelodyClosed
 	}
@@ -226,14 +226,14 @@ func (m *Melody) BroadcastFilter(msg []byte, fn func(*Session) bool) error {
 }
 
 // BroadcastOthers broadcasts a text message to all sessions except session s.
-func (m *Melody) BroadcastOthers(msg []byte, s *Session) error {
-	return m.BroadcastFilter(msg, func(q *Session) bool {
+func (m *Melody) BroadcastOthers(msg []byte, s Session) error {
+	return m.BroadcastFilter(msg, func(q Session) bool {
 		return s != q
 	})
 }
 
 // BroadcastMultiple broadcasts a text message to multiple sessions given in the sessions slice.
-func (m *Melody) BroadcastMultiple(msg []byte, sessions []*Session) error {
+func (m *Melody) BroadcastMultiple(msg []byte, sessions []Session) error {
 	for _, sess := range sessions {
 		if writeErr := sess.Write(msg); writeErr != nil {
 			return writeErr
@@ -255,7 +255,7 @@ func (m *Melody) BroadcastBinary(msg []byte) error {
 }
 
 // BroadcastBinaryFilter broadcasts a binary message to all sessions that fn returns true for.
-func (m *Melody) BroadcastBinaryFilter(msg []byte, fn func(*Session) bool) error {
+func (m *Melody) BroadcastBinaryFilter(msg []byte, fn func(Session) bool) error {
 	if m.hub.closed() {
 		return ErrMelodyClosed
 	}
@@ -267,8 +267,8 @@ func (m *Melody) BroadcastBinaryFilter(msg []byte, fn func(*Session) bool) error
 }
 
 // BroadcastBinaryOthers broadcasts a binary message to all sessions except session s.
-func (m *Melody) BroadcastBinaryOthers(msg []byte, s *Session) error {
-	return m.BroadcastBinaryFilter(msg, func(q *Session) bool {
+func (m *Melody) BroadcastBinaryOthers(msg []byte, s Session) error {
+	return m.BroadcastBinaryFilter(msg, func(q Session) bool {
 		return s != q
 	})
 }
